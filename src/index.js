@@ -32,28 +32,20 @@ import {
 } from './engines.js'
 
 /**
- * Optional boot trace.
- *
- * The host's `ctx.logger` output is not visible in a headless run, which made a
- * silent registration failure invisible: the seam reported
- * `WEB_PROVIDER_CONFIGURED_MISSING` with no clue which half broke. With
- * `DSH_WBRIDGE_TRACE=1` each step appends one line, so the failure has a
- * location. Off by default and never throws.
- */
-/**
  * Where this plugin keeps its own state (`boot.json`, `memo.json`, trace log).
  *
- * `process.env.DSH_HOME` is **not** set inside the Electron host — verified: the
- * host runs with the profile directory as its cwd instead. Falling back to `.`
- * therefore scattered state into whatever directory the host happened to start
- * in. This resolves, in order: the environment variable, the profile directory
- * when the host exposes it, and finally `<home>/.dsh` — never a bare cwd.
+ * The location must be **the same on every run**, otherwise the diagnostics that
+ * depend on it become useless. An earlier version also consulted
+ * `DSH_PROFILE_DIR`, which nested the state inside the profile and produced two
+ * different `boot.json` files depending on how the host was started — observed.
+ *
+ * `process.env.DSH_HOME` is **not** set inside the Electron host (verified: the
+ * host runs with the profile directory as its cwd), so the order is: the
+ * variable, then the conventional `<home>/.dsh`, then cwd as a last resort.
  */
 function stateRoot() {
   const fromEnv = process.env.DSH_HOME
   if (typeof fromEnv === 'string' && fromEnv.length > 0) return fromEnv
-  const fromProfile = process.env.DSH_PROFILE_DIR
-  if (typeof fromProfile === 'string' && fromProfile.length > 0) return fromProfile
   const home = process.env.USERPROFILE ?? process.env.HOME
   if (typeof home === 'string' && home.length > 0) {
     const conventional = join(home, '.dsh')
@@ -69,6 +61,15 @@ function stateDir() {
 }
 
 /**
+ * `DSH_WBRIDGE_TRACE=1` each step appends one line, so the failure has a
+ * location. Off by default and never throws.
+ */
+/**
+ * Optional boot trace.
+ *
+ * The host's `ctx.logger` output is not visible in a headless run, which made a
+ * silent registration failure invisible: the seam reported
+ * `WEB_PROVIDER_CONFIGURED_MISSING` with no clue which half broke. With
  * `DSH_WBRIDGE_TRACE=1` each step appends one line, so the failure has a
  * location. Off by default and never throws.
  */
