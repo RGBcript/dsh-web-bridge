@@ -1,6 +1,6 @@
 {
   "name": "dsh-web-bridge",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Free web search for DeepSeek Harness: a ctx.web provider that drives a real browser or plain HTTP against Bing, DuckDuckGo and Marginalia. No API key, no quota, no Docker.",
   "type": "module",
   "main": "src/index.js",
@@ -22,7 +22,7 @@
     "probe": "node tools/probe.mjs",
     "preflight": "node tools/preflight.mjs",
     "doctor": "node tools/env-doctor.mjs",
-    "test": "node tools/test-exa.mjs && node tools/test-env-doctor.mjs && node tools/test-switch.mjs && node tools/test-apply.mjs && node tools/selftest.mjs",
+    "test": "node tools/test-extract.mjs && node tools/test-exa.mjs && node tools/test-env-doctor.mjs && node tools/test-switch.mjs && node tools/test-apply.mjs && node tools/selftest.mjs",
     "pack": "node tools/pack.mjs"
   },
   "dsh": {

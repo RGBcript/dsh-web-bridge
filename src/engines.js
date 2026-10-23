@@ -14,9 +14,24 @@
  * evaluated in the page, so it must be self-contained: no closures, no imports.
  */
 
-/** Titles/snippets arrive with newlines and entities baked in; flatten them. */
+/**
+ * Titles/snippets arrive with newlines and entities baked in; flatten them.
+ *
+ * Entities are decoded rather than left raw: a live Bing page returned
+ * "DeepSeek en espa&#241;ol", which is not a title a person would write and looks
+ * like corruption in a citation. Only the common named entities plus numeric
+ * forms are handled — a full table would cost more than it is worth here.
+ */
 function plain(value) {
   return String(value ?? '')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(Number.parseInt(code, 16)))
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -351,6 +366,12 @@ export function normalizeSources(candidates, engine, maxResults) {
  * raw page does not fill the citations with menu items.
  */
 export function parseHttpResults(html, engine) {
+  // Bing needs its own path: every `href` it serves is an opaque
+  // `bing.com/ck/a?p=<hex>` redirector, so the generic anchor scan finds 22
+  // links, all on a blocked host, and normalisation discards the lot. The real
+  // destination is in the `<cite>` element of each result block.
+  if (engine?.id === 'bing') return parseBingHttp(html)
+
   const candidates = []
   const anchor = /<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
   let match
@@ -360,6 +381,43 @@ export function parseHttpResults(html, engine) {
     const text = plain(match[2].replace(/<[^>]+>/g, ' '))
     if (text.length < 12) continue
     candidates.push({ url, title: text, snippet: '' })
+  }
+  return candidates
+}
+
+/**
+ * Bing's HTTP results, split per `li.b_algo` block.
+ *
+ * Measured on a live page: `<cite>` always carries the human-readable
+ * destination (`https://www.deepseek.com`), while every `href` is a redirector.
+ * The title comes from the `<h2>` anchor with Bing's display-URL decoration
+ * (`deepseek.comhttps://www.deepseek.com`) stripped, and the snippet from
+ * `.b_caption p`. Navigation entries such as "Imágenes" live outside `b_algo`,
+ * so scoping to that class removes them for free.
+ */
+function parseBingHttp(html) {
+  const candidates = []
+  const block = /<li class="b_algo"[\s\S]*?(?=<li class="b_algo"|<\/ol>|$)/gi
+  let item
+  while ((item = block.exec(html)) !== null) {
+    const chunk = item[0]
+    const cite = chunk.match(/<cite[^>]*>([\s\S]*?)<\/cite>/i)
+    const citation = plain(cite === null ? '' : cite[1].replace(/<[^>]+>/g, ' '))
+    // `cite` shows the URL without always keeping the scheme; normalise it.
+    const url = citation.length === 0 ? undefined : /^https?:\/\//i.test(citation) ? citation : `https://${citation}`
+    if (url === undefined || url === 'https://') continue
+
+    const anchor = chunk.match(/<h2[^>]*>\s*<a[^>]*>([\s\S]*?)<\/a>/i)
+    const title = plain(anchor === null ? '' : anchor[1].replace(/<[^>]+>/g, ' '))
+      .replace(/https?:\/\/\S+/gi, ' ')
+      .replace(/^[\w-]+(\.[\w-]+)+\s*/, '')
+      .trim()
+
+    const snippetMatch = chunk.match(/<p class="[^"]*b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/i)
+      ?? chunk.match(/<div class="[^"]*b_caption[^"]*"[^>]*>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/i)
+    const snippet = plain(snippetMatch === null ? '' : snippetMatch[1].replace(/<[^>]+>/g, ' '))
+
+    candidates.push({ url, title, snippet })
   }
   return candidates
 }
