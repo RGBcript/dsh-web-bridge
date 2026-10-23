@@ -1,0 +1,72 @@
+{
+  "name": "dsh-web-bridge",
+  "version": "0.7.0",
+  "description": "Free web search for DeepSeek Harness: a ctx.web provider that drives a real browser or plain HTTP against Bing, DuckDuckGo and Marginalia. No API key, no quota, no Docker.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./engines": "./src/engines.js",
+    "./browser": "./src/browser.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "tools",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "probe": "node tools/probe.mjs",
+    "preflight": "node tools/preflight.mjs",
+    "doctor": "node tools/env-doctor.mjs",
+    "test": "node tools/test-env-doctor.mjs && node tools/test-switch.mjs && node tools/test-apply.mjs && node tools/selftest.mjs",
+    "pack": "node tools/pack.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.0-rc.2 <0.3.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-web": ">=0.2.0-rc.2 <0.3.0",
+    "@deepseek-ai/schemastery": "~3.18.4"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-web": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "web-search",
+    "web-search-provider",
+    "ctx-web",
+    "free",
+    "no-api-key",
+    "bing",
+    "duckduckgo",
+    "marginalia",
+    "browser",
+    "cdp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RGBcript/dsh-web-bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RGBcript/dsh-web-bridge/issues"
+  },
+  "homepage": "https://github.com/RGBcript/dsh-web-bridge#readme",
+  "license": "MIT"
+}

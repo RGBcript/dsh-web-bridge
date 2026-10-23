@@ -1,0 +1,26 @@
+# dsh-web-bridge bundle patch.
+#
+# One row. Everything that differs between users is config, not code:
+#   engine: auto   -> the bridge keeps a small per-machine memo of which
+#                     engine/transport actually returned results and prefers it.
+#   mode:   auto   -> every HTTP attempt is tried before any browser is launched,
+#                     so a machine where plain HTTP works never pays for a
+#                     process. Use `browser` for extracts, `light` for no browser.
+#
+# `providerId` is what the `web` entry must pin in `searchProvider` for this
+# provider to win over the built-in DeepSeek one. Registering without pinning
+# would leave two usable providers, and the seam then refuses every search with
+# WEB_PROVIDER_AMBIGUOUS instead of guessing.
+- insert:
+    - id: web-bridge
+      name: dsh-web-bridge
+      config:
+        providerId: bridge
+        engine: auto
+        mode: auto
+        channel: auto
+        headless: true
+        # A Chromium instance is ~120 MB while alive; it is closed after this
+        # much quiet so the plugin never becomes a permanent background process.
+        idleCloseMs: 45000
+        maxResults: 8

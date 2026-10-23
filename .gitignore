@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.tgz
+
+# Runtime state this plugin writes next to the host
+web-bridge/
+wbridge-trace.log
+
+# Local test leftovers
+*.local.mjs
+_tmp/
