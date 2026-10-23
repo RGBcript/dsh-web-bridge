@@ -235,6 +235,19 @@ export const ENGINES = {
     hosts: ['marginalia.nu'],
     settleMs: 1500,
   },
+  /*
+   * Semantic engine. No `browserUrl`: there is no page to render, the endpoint
+   * answers JSON-RPC. `searchExa` in `exa.js` owns the transport, its mutex and
+   * the 429 handling; this entry exists so the rest of the plugin can treat it
+   * like any other engine.
+   */
+  exa: {
+    id: 'exa',
+    label: 'Exa',
+    hosts: [],
+    settleMs: 0,
+    semantic: true,
+  },
 }
 
 /**
@@ -243,8 +256,25 @@ export const ENGINES = {
  * Measured on this machine: Bing renders under headless Brave, DuckDuckGo's HTML
  * endpoint renders in both modes, Marginalia is small but stable, and Brave
  * Search challenges headless. The healthy default therefore leads with Bing.
+ *
+ * `exa` sits last on purpose — see {@link LEXICAL_ENGINES} for why it is not a
+ * peer of the others.
  */
-export const ENGINE_PREFERENCE = ['bing', 'duckduckgo', 'marginalia', 'brave']
+export const ENGINE_PREFERENCE = ['bing', 'duckduckgo', 'marginalia', 'brave', 'exa']
+
+/**
+ * Engines that match words, as opposed to meaning.
+ *
+ * The distinction drives the order of attempts, not just the preference list:
+ * every lexical engine is tried first, cheaply, and only if they all return
+ * nothing does the semantic engine run. Measured cost of that rule: a normal
+ * search pays ~1 s, and the ~5 s semantic call happens only when the words and
+ * the documents do not share tokens — which is exactly the case it exists for.
+ */
+export const LEXICAL_ENGINES = new Set(['bing', 'duckduckgo', 'marginalia', 'brave'])
+
+/** Engines answered by an API rather than by a rendered page. */
+export const API_ENGINES = new Set(['exa'])
 
 /**
  * Which transport actually works for each engine, measured on this machine.

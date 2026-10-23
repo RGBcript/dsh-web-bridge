@@ -31,7 +31,23 @@ Verified on Windows 11 with Brave 155, DSH `0.2.1-rc.2`. These are observations 
 | **DuckDuckGo** (HTML) | works, sometimes captcha | shell only | captcha appears under load |
 | **Marginalia** | works | — | small independent index; few but clean results |
 | **Brave Search** | challenge | challenge | needs a session cookie; off by default |
+| **Exa** (semantic) | API | — | last resort, only when every lexical engine returns nothing |
 | Google | blocked | renders, 0 extractable URLs | not supported |
+
+### Why a semantic engine, and why last
+
+The lexical engines match words. Ask for "Gemini Argon" when the documents say "Gemini 4 Argon" and DuckDuckGo returns *nothing* — the tokens do not overlap, so there is no match to rank. Measured directly: the same query with the `4` returned four results, without it zero.
+
+Exa ranks by meaning, so the vague question still finds the page. It is the only keyless semantic source that works from here: public SearXNG instances now answer `403` or HTML where JSON was expected, and OpenAlex only indexes papers.
+
+It runs **last**, after every lexical attempt, for two measured reasons:
+
+- **Latency.** 1.5–5.6 s per call against ~1 s for a lexical engine.
+- **Rate.** Five concurrent calls produced two `429`s; spacing them 3 s apart produced none.
+
+The endpoint is serialised by an internal mutex, and a `429` is reported as `WEB_RATE_LIMITED`, never as an empty result — a rejected call returns a non-JSON body that would otherwise read as "nothing found". Repeated failures put the engine in the same cooldown a failing lexical engine gets.
+
+No API key, no account, no cost. The public endpoint is a courtesy service with no SLA; if it disappears, the lexical path keeps working unchanged.
 
 `memo.json` remembers which engine/transport pair actually returned results on your machine and prefers it, so the plugin adapts instead of hardcoding one engine.
 

@@ -70,7 +70,13 @@ check(
   autoAttempts.map((attempt) => `${attempt.engineId}/${attempt.transport}`).join(' '),
 )
 const lightAttempts = buildAttempts({ ...options, mode: 'light' }, fresh)
-check('en modo light nunca se intenta un navegador', lightAttempts.every((attempt) => attempt.transport === 'http'), `${lightAttempts.length} intentos HTTP`)
+// La intención es "ningún navegador", no "solo http": el motor semántico viaja por
+// `api` y no lanza ningún proceso, así que también es válido en modo light.
+check(
+  'en modo light nunca se intenta un navegador',
+  lightAttempts.every((attempt) => attempt.transport !== 'browser'),
+  lightAttempts.map((attempt) => `${attempt.engineId}/${attempt.transport}`).join(' '),
+)
 const coolingMemo = new SearchMemo(join(memoDir, 'cooling.json'))
 coolingMemo.recordFailure('bing', 'browser', 'prueba')
 const cooled = buildAttempts(options, coolingMemo)

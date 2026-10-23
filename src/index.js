@@ -21,6 +21,7 @@ import { BrowserSearch } from './browser.js'
 import { SearchMemo } from './memo.js'
 import { configBoolean, modeFor, reconcile } from './settings.js'
 import { applyMode, describePatch, patchPath, readPatch, writePatch } from './switch.js'
+import { isRateLimited, searchExa } from './exa.js'
 import {
   ENGINES,
   ENGINE_PREFERENCE,
@@ -205,22 +206,41 @@ export function buildAttempts(options, memo) {
   // transport order.
   const attempts = []
   const seen = new Set()
+  const isApi = (engineId) => ENGINES[engineId]?.semantic === true
   const add = (engineId, transport) => {
     if (!engines.includes(engineId)) return
-    if (!transports.includes(transport)) return
+    // `api` is a transport the mode list never contains: API engines answer it
+    // regardless of whether the mode allows HTTP or a browser.
+    if (transport !== 'api' && !transports.includes(transport)) return
     const key = `${engineId}/${transport}`
     if (seen.has(key)) return
     seen.add(key)
     attempts.push({ engineId, transport })
   }
 
-  for (const pair of memo.working()) add(pair.engine, pair.transport)
+  // API engines have a single transport; naming it `api` keeps them out of the
+  // http/browser sweep below, which is what makes "lexical first" hold.
 
+  for (const pair of memo.working()) {
+    if (isApi(pair.engine)) add(pair.engine, 'api')
+    else add(pair.engine, pair.transport)
+  }
+
+  // Lexical, cheap, every transport the mode allows.
   for (const transport of transports) {
     for (const engineId of engines) {
+      if (isApi(engineId)) continue
       if (memo.cooling(engineId, transport)) continue
       add(engineId, transport)
     }
+  }
+
+  // Semantic last: only reached if every lexical attempt came back empty, which
+  // the caller enforces by iterating in order. Skipped entirely while cooling.
+  for (const engineId of engines) {
+    if (!isApi(engineId)) continue
+    if (memo.cooling(engineId, 'api')) continue
+    add(engineId, 'api')
   }
 
   return attempts
@@ -284,9 +304,14 @@ export function createProvider(getOptions, browser, memo) {
         const engine = ENGINES[engineId]
         try {
           const outcome =
-            transport === 'browser'
-              ? await browser.sources(engineId, query, { maxResults: limit, timeoutMs: options.timeoutMs, signal })
-              : await searchOverHttp(engine, query, options, signal, limit)
+            transport === 'api'
+              ? await searchExa(query, { maxResults: limit, signal }).then((result) => {
+                  const { sources } = normalizeSources(result.candidates, result.engine, limit)
+                  return { sources, truncated: false }
+                })
+              : transport === 'browser'
+                ? await browser.sources(engineId, query, { maxResults: limit, timeoutMs: options.timeoutMs, signal })
+                : await searchOverHttp(engine, query, options, signal, limit)
           const { sources, truncated } = outcome
 
           if (transport === 'browser') browser.scheduleIdleClose(options.idleCloseMs)
@@ -300,12 +325,25 @@ export function createProvider(getOptions, browser, memo) {
           memo.recordSuccess(engineId, transport)
           return {
             ...(options.provenance === true
-              ? { content: `${engine.label} vía ${transport === 'browser' ? 'navegador' : 'HTTP'} — ${sources.length} resultados` }
+              ? {
+                  content: `${engine.label} vía ${transport === 'browser' ? 'navegador' : transport === 'api' ? 'API semántica' : 'HTTP'} — ${sources.length} resultados`,
+                }
               : {}),
             sources,
             truncated: truncated === true,
           }
         } catch (error) {
+          /*
+           * A 429 from the public endpoint is not "this engine found nothing": it
+           * is "slow down". Recording it as a plain failure would retry on the very
+           * next search and fail again, so it goes through the same cooldown path
+           * a flat engine uses.
+           */
+          if (isRateLimited(error)) {
+            memo.recordFailure(engineId, transport, 'rate limited')
+            failures.push(`${engineId}/${transport}:429`)
+            continue
+          }
           memo.recordFailure(engineId, transport, error?.message)
           failures.push(`${engineId}/${transport}:!${String(error?.message ?? error).slice(0, 60)}`)
         }
