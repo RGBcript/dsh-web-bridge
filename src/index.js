@@ -246,6 +246,16 @@ export function buildAttempts(options, memo) {
   return attempts
 }
 
+/**
+ * Markers a search engine uses when it decides the caller is a bot.
+ *
+ * Checked only when a page yields no results, so an ordinary page that happens to
+ * contain the word "challenge" is not misread. Kept deliberately narrow: the cost
+ * of a false positive here is a one-minute bench, but a false negative benches the
+ * engine for ten.
+ */
+const CAPTCHA_PATTERN = /anomaly-modal|captcha|Select all squares|bots use DuckDuckGo|Verificando que no eres|unusual traffic|challenge-platform/i
+
 /** Fetch one engine page over plain HTTP and normalise it. */
 async function searchOverHttp(engine, query, options, signal, limit) {
   const timeout = AbortSignal.timeout(options.timeoutMs)
@@ -262,6 +272,19 @@ async function searchOverHttp(engine, query, options, signal, limit) {
   })
   if (!response.ok) throw new Error(`${engine.label}: HTTP ${response.status}`)
   const html = await response.text()
+
+  /*
+   * A challenge page is not an empty result set, and the difference decides how
+   * long the engine is benched: a captcha clears in a minute, whereas "this index
+   * has nothing for that query" deserves the full term. Without this check the
+   * HTML parses to zero candidates and gets recorded as `empty` — the exact
+   * mistake that benched DuckDuckGo for ten minutes after a burst produced a
+   * captcha that had already expired.
+   */
+  if (CAPTCHA_PATTERN.test(html) && parseHttpResults(html, engine).length === 0) {
+    throw new Error(`${engine.label}: captcha challenge`)
+  }
+
   const candidates = parseHttpResults(html, engine).map((entry) => ({ ...entry, url: resolveUrl(entry.url) }))
   // The bound comes from the request, not from config: the tool asks for a
   // specific number and the seam only truncates what it is given.
@@ -317,7 +340,9 @@ export function createProvider(getOptions, browser, memo) {
           if (transport === 'browser') browser.scheduleIdleClose(options.idleCloseMs)
 
           if (sources.length === 0) {
-            memo.recordFailure(engineId, transport, 'no results')
+            // Explicit kind: the engine answered fine, there is simply nothing to
+            // cite. That is the one failure worth benching for the full term.
+            memo.recordFailure(engineId, transport, 'empty')
             failures.push(`${engineId}/${transport}:0`)
             continue
           }
@@ -337,14 +362,17 @@ export function createProvider(getOptions, browser, memo) {
            * A 429 from the public endpoint is not "this engine found nothing": it
            * is "slow down". Recording it as a plain failure would retry on the very
            * next search and fail again, so it goes through the same cooldown path
-           * a flat engine uses.
+           * a flat engine uses — with the shorter term `rate` implies.
            */
           if (isRateLimited(error)) {
-            memo.recordFailure(engineId, transport, 'rate limited')
+            memo.recordFailure(engineId, transport, 'rate')
             failures.push(`${engineId}/${transport}:429`)
             continue
           }
-          memo.recordFailure(engineId, transport, error?.message)
+          // The memo classifies the rest from the message: a captcha clears in a
+          // minute, a network blip in ninety seconds, and neither deserves the
+          // full ten-minute bench a genuinely empty engine gets.
+          memo.recordFailure(engineId, transport, error)
           failures.push(`${engineId}/${transport}:!${String(error?.message ?? error).slice(0, 60)}`)
         }
       }
